@@ -1,1 +1,11 @@
-# rectified-flow-2d
+# 整流流 (Rectified Flow) 2D - 阶段 1
+
+本项目使用 PyTorch 在二维空间中实现了一个整流流模型，旨在学习从简单噪声分布到目标数据分布（一个椭圆）的映射。这是整流流实现的“阶段 1”。
+
+## 1. 开始
+
+在终端中运行以下命令：
+```bash
+python stage1.py
+```
+它实现了Rectified Flow第一阶段的训练、推理及可视化。
