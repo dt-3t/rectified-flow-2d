@@ -7,6 +7,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
+# --- 0. 设置设备 ---
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
+
+
 # --- 1. 速度预测网络 ---
 # 输入当前状态与t，输出速度
 class MLP(nn.Module):
@@ -34,7 +39,7 @@ def get_target_distribution(num_points):
     theta = torch.linspace(0, 2 * np.pi, num_points)
     target_x = 2 + torch.cos(theta)
     target_y = 1 + 2 * torch.sin(theta)
-    return torch.stack([target_x, target_y], dim=1)
+    return torch.stack([target_x, target_y], dim=1).to(device)
 
 
 # --- 3. 训练函数 ---
@@ -46,13 +51,13 @@ def train_rectified_flow(model, target_data, num_epochs=5000, batch_size=256, lr
 
     for epoch in range(num_epochs):
         # 从初始噪声分布中采样
-        z0 = torch.randn(batch_size, initial_noise_dim)  # [bs, d]
+        z0 = torch.randn(batch_size, initial_noise_dim).to(device)  # [bs, d]
 
         # 随机采样时间 t，范围在 [0, 1] 之间
-        t = torch.rand(batch_size, 1)  # [bs, 1]
+        t = torch.rand(batch_size, 1).to(device)  # [bs, 1]
 
         # 从目标分布中随机选择与当前batch_size数量相等的点作为对应的目标
-        indices = torch.randint(0, target_data.shape[0], (batch_size,))  # [bs,]
+        indices = torch.randint(0, target_data.shape[0], (batch_size,), device=device)  # [bs,]
         z1 = target_data[indices]  # [bs, d]
 
         # 使用t给目标点加噪
@@ -81,13 +86,13 @@ def generate_samples(model, initial_noise_for_plot, num_steps=1):
     model.eval()
     num_samples = initial_noise_for_plot.shape[0]
     with torch.no_grad():
-        current_samples = initial_noise_for_plot.clone()  # [m, d]
+        current_samples = initial_noise_for_plot.clone().to(device)  # [m, d]
         dt = 1.0 / num_steps  # 每一步走的时间长度
 
         # 从 t=0 逐步模拟到 t=1
         for i in range(num_steps):
             # 当前时间点
-            t = torch.full((num_samples,), i * dt, device=current_samples.device)  # [m,]
+            t = torch.full((num_samples,), i * dt, device=device)  # [m,]
 
             # 预测速度
             predicted_velocity = model(current_samples, t)  # [m, d]
@@ -95,7 +100,7 @@ def generate_samples(model, initial_noise_for_plot, num_steps=1):
             # Euler方法：x_new = x_old + v * dt
             current_samples = current_samples + predicted_velocity * dt  # [m, d]
 
-        return current_samples  # [m, d]
+        return current_samples.cpu()  # [m, d]
 
 
 # --- 5. 可视化函数 ---
@@ -136,14 +141,14 @@ if __name__ == "__main__":
     np.random.seed(42)
 
     target_data = get_target_distribution(num_points=128)  # [n, d]，n为训练集点的数量，d为2表示是2维
-    rf_model = MLP()
+    rf_model = MLP().to(device)
 
     print("Starting training...")
-    train_rectified_flow(rf_model, target_data, num_epochs=4000, batch_size=512, lr=5e-4)
+    train_rectified_flow(rf_model, target_data, num_epochs=5000, batch_size=256, lr=5e-4)
 
     # 推理
     num_generated_samples = 512
-    initial_noise_for_plot = torch.randn(num_generated_samples, 2)  # [m, d]
+    initial_noise_for_plot = torch.randn(num_generated_samples, 2).cpu()  # [m, d]，n为要生成的点的数量
 
     # 推理时的步数列表
     step_list = [1, 2, 4, 8, 16, 32]
@@ -151,6 +156,6 @@ if __name__ == "__main__":
     for num_steps in step_list:
         print(f"\nGenerating samples with {num_steps} steps...")
         generated_samples = generate_samples(rf_model, initial_noise_for_plot, num_steps=num_steps)
-        plot_results(initial_noise_for_plot, generated_samples, target_data, step_title=f"{num_steps} Steps")
+        plot_results(initial_noise_for_plot, generated_samples, target_data.cpu(), step_title=f"{num_steps} Steps")
 
     print("\nAll simulations complete.")
